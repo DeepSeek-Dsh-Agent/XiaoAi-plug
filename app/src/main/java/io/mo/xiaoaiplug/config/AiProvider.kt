@@ -26,7 +26,7 @@ enum class AiProvider(
      * 只填自己的 DeepSeek API Key 即可。同一条 Key 也被 `web_search` / `web_fetch`
      * 两个工具复用（见 Tools.kt 的 DeepSeek Search/Fetch 段）。
      */
-    DEEPSEEK("deepseek", "DeepSeek", Wire.OPENAI, "https://api.deepseek.com/v1", "deepseek-chat"),
+    DEEPSEEK("deepseek", "DeepSeek", Wire.OPENAI, "https://api.deepseek.com/v1", "deepseek-flash"),
     ANTHROPIC("anthropic", "Anthropic", Wire.ANTHROPIC, "https://api.anthropic.com/v1", "claude-opus-4-8"),
     XAI("xai", "xAI (Grok)", Wire.OPENAI, "https://api.x.ai/v1", "grok-4"),
     SILICONFLOW("siliconflow", "硅基流动", Wire.OPENAI, "https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B");
