@@ -15,8 +15,8 @@ android {
         // miuix-blur 要求 minSdk 33（模糊靠 RenderEffect，低版本拿不到「液态玻璃」质感）。
         minSdk = 33
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.1.1.1"
+        versionCode = 12
+        versionName = "1.2.0-deepseek"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))

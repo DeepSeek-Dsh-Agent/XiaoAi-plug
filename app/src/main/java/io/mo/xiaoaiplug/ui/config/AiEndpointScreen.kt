@@ -1,10 +1,12 @@
 package io.mo.xiaoaiplug.ui.config
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -15,11 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.mo.xiaoaiplug.R
 import io.mo.xiaoaiplug.config.AiProvider
 import io.mo.xiaoaiplug.config.DEFAULT_SYSTEM_PROMPT
 import io.mo.xiaoaiplug.ui.ConfigViewModel
@@ -59,16 +63,38 @@ fun AiEndpointScreen(vm: ConfigViewModel, bottomInset: Dp, onBack: () -> Unit) {
         item { SmallTitle("服务商") }
         item {
             Card(Modifier.fillMaxWidth()) {
-                WindowDropdownPreference(
-                    title = "接入方式",
-                    items = providers.map { it.label },
-                    selectedIndex = providers.indexOf(provider),
-                    // 只存 key，不动用户已填的地址/模型 —— 那两个留空就自动跟着新服务商的默认走，
-                    // 填过的则原样保留，切回来还在。
-                    onSelectedIndexChange = { i ->
-                        vm.update { it.copy(provider = providers[i].key) }
+                Column {
+                    // 有官方 LOGO 的服务商（目前是 DeepSeek）在选项上方亮出来：
+                    // 一眼认出当前接的是谁，也省得用户以为默认值是随手编的。
+                    providerLogoRes(provider)?.let { logo ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = CardHorizontalPadding, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Image(
+                                painter = painterResource(logo),
+                                contentDescription = provider.label,
+                                modifier = Modifier.size(30.dp)
+                            )
+                            Text(
+                                text = provider.label,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
                     }
-                )
+                    WindowDropdownPreference(
+                        title = "接入方式",
+                        items = providers.map { it.label },
+                        selectedIndex = providers.indexOf(provider),
+                        // 只存 key，不动用户已填的地址/模型 —— 那两个留空就自动跟着新服务商的默认走，
+                        // 填过的则原样保留，切回来还在。
+                        onSelectedIndexChange = { i ->
+                            vm.update { it.copy(provider = providers[i].key) }
+                        }
+                    )
+                }
             }
         }
         item { SmallTitle("端点") }
@@ -257,3 +283,9 @@ fun AiEndpointScreen(vm: ConfigViewModel, bottomInset: Dp, onBack: () -> Unit) {
 /** 1834 → "1.8 秒"。 */
 private fun formatSeconds(ms: Long): String =
     String.format(Locale.US, "%.1f 秒", ms / 1000.0)
+
+/** 服务商官方 LOGO；没有专属资源的不显示（别的服务商仍是纯文字选项）。 */
+private fun providerLogoRes(provider: AiProvider): Int? = when (provider) {
+    AiProvider.DEEPSEEK -> R.drawable.ic_provider_deepseek
+    else -> null
+}

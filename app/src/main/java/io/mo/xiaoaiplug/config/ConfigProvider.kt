@@ -11,7 +11,7 @@ import io.mo.xiaoaiplug.auto.AccessibilityGuard
 import io.mo.xiaoaiplug.auto.UiAutoService
 
 object ConfigKeys {
-    // 服务商:openai / anthropic / xai / siliconflow(见 AiProvider)
+    // 服务商:openai / deepseek / anthropic / xai / siliconflow(见 AiProvider)
     const val PROVIDER = "provider"
     const val ENDPOINT = "endpoint"
     const val API_KEY = "api_key"

@@ -18,6 +18,15 @@ enum class AiProvider(
     val defaultModel: String
 ) {
     OPENAI("openai", "OpenAI 兼容", Wire.OPENAI, "https://api.openai.com/v1", "gpt-4o-mini"),
+
+    /**
+     * DeepSeek 官方 API（OpenAI 兼容协议）。
+     *
+     * 内置这一项是为了省掉「每次都要手填地址和模型」：选中它，端点/模型不用填，
+     * 只填自己的 DeepSeek API Key 即可。同一条 Key 也被 `web_search` / `web_fetch`
+     * 两个工具复用（见 Tools.kt 的 DeepSeek Search/Fetch 段）。
+     */
+    DEEPSEEK("deepseek", "DeepSeek", Wire.OPENAI, "https://api.deepseek.com/v1", "deepseek-chat"),
     ANTHROPIC("anthropic", "Anthropic", Wire.ANTHROPIC, "https://api.anthropic.com/v1", "claude-opus-4-8"),
     XAI("xai", "xAI (Grok)", Wire.OPENAI, "https://api.x.ai/v1", "grok-4"),
     SILICONFLOW("siliconflow", "硅基流动", Wire.OPENAI, "https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B");

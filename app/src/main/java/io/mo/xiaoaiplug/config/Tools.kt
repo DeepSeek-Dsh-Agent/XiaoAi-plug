@@ -13,6 +13,8 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -93,6 +95,7 @@ object Tools {
             mediaControl, setVolume, bluetoothControl, quickToggle,
             currentTime, recentNotifications, clipboard, getLocation, weather,
             readSmsCode, getScreenContent, uiObserve, uiAct, getLogcat, appStateControl,
+            webSearch, webFetch,
             saveMemory
         )
     }
@@ -2369,6 +2372,144 @@ object Tools {
         return apps.firstOrNull { it.packageName == name }?.packageName
             ?: apps.firstOrNull { pm.getApplicationLabel(it).toString().equals(name, true) }?.packageName
             ?: apps.firstOrNull { pm.getApplicationLabel(it).toString().contains(name, true) }?.packageName
+    }
+
+    // ---------------------------------------------------------------- DeepSeek 搜索 / 网页抓取
+
+    /**
+     * DeepSeek 官方 Search / Fetch 工具接口（https://api.deepseek.com/v1/tools/*）。
+     *
+     * 复用「AI 接入」里填的 API Key —— 前提是那是 DeepSeek 的 Key。换成别家服务商时
+     * 这两个工具会拿到 401/404，如实返回给模型，不假装成功。
+     * 文档：https://api-docs.deepseek.com/zh-cn/guides/search/
+     */
+    private val webSearch = Spec(
+        name = "web_search",
+        description = "联网搜索网页（DeepSeek 搜索）",
+        modelHint = "用户问实时/最新信息（新闻、价格、版本发布）时用；" +
+            "query 支持 site: / -site: / lang:zh,en / after:2025 / \"精确短语\" 等语法；" +
+            "需要读正文再设 need_content=true（会慢一些）。",
+        params = listOf(
+            Param("query", "string", "搜索词，1~128 字，可带 site: / lang: / after: 等语法", required = true),
+            Param("count", "integer", "返回条数 1~50，默认 8"),
+            Param("need_content", "boolean", "是否返回网页正文，默认 false")
+        ),
+        handler = { args, ctx -> runWebSearch(args, ctx) }
+    )
+
+    private val webFetch = Spec(
+        name = "web_fetch",
+        description = "抓取单个网页正文（Markdown）",
+        modelHint = "搜索结果里挑中某个 URL、需要读全文时用；一次一个 URL。" +
+            "页面不可达或被站点拦截会返回错误，别对同一个地址反复重试。",
+        params = listOf(
+            Param("url", "string", "http/https 网址，必须含 host", required = true)
+        ),
+        handler = { args, ctx -> runWebFetch(args, ctx) }
+    )
+
+    private const val DEEPSEEK_DEFAULT_BASE = "https://api.deepseek.com/v1"
+
+    /**
+     * 跨进程拿 DeepSeek 的 Key 与基址。
+     *
+     * 基址优先从用户配置的端点推导（端点里带 deepseek 时）；用户选的是别家服务商、
+     * 端点也是别家的话，退回 DeepSeek 官方地址 —— 搜索/抓取本来就是 DeepSeek 的能力。
+     */
+    private fun deepSeekTarget(ctx: Context?): Pair<String, String>? {
+        val appCtx = ctx ?: return null
+        val out = runCatching {
+            appCtx.contentResolver.call(
+                Uri.parse("content://${ConfigProvider.AUTHORITY}"),
+                ConfigProvider.METHOD_GET, null, null
+            )
+        }.getOrNull() ?: return null
+        val apiKey = out.getString(ConfigKeys.API_KEY).orEmpty().trim()
+        val configured = out.getString(ConfigKeys.ENDPOINT).orEmpty().trim()
+        val base = if (configured.contains("deepseek", ignoreCase = true)) {
+            configured.trimEnd('/').removeSuffix("/chat/completions")
+                .let { if (it.endsWith("/v1")) it else "$it/v1" }
+        } else DEEPSEEK_DEFAULT_BASE
+        return apiKey to base
+    }
+
+    private fun runWebSearch(args: JSONObject, ctx: Context?): String {
+        val query = args.optString("query", "").trim()
+        if (query.isEmpty()) return "error: query 为空"
+        if (query.length > 128) return "error: query 超过 128 字"
+        val count = args.optInt("count", 8).coerceIn(1, 50)
+        val needContent = args.optBoolean("need_content", false)
+        val (apiKey, base) = deepSeekTarget(ctx)
+            ?: return "error: 读不到模块配置（模块进程可能没在运行）"
+        if (apiKey.isBlank()) return "error: 还没填 DeepSeek API Key（设置 → AI 接入 → API Key）"
+        val body = JSONObject().put("query", query).put("count", count)
+        if (needContent) body.put("need_content", true)
+        val resp = postDeepSeek("$base/tools/search", apiKey, body)
+        if (!resp.ok) return "error: DeepSeek Search 失败（HTTP ${resp.code}）：${resp.error}"
+        val results = resp.json?.optJSONArray("results") ?: JSONArray()
+        if (results.length() == 0) return "(没有搜索结果)"
+        val sb = StringBuilder()
+        for (i in 0 until results.length()) {
+            val r = results.optJSONObject(i) ?: continue
+            sb.append(i + 1).append(". ").append(r.optString("title")).append('\n')
+            sb.append("   ").append(r.optString("url")).append('\n')
+            sb.append("   ").append(r.optString("summary").ifBlank { r.optString("snippet") }).append('\n')
+            if (needContent) {
+                val content = r.optString("content")
+                if (content.isNotBlank()) sb.append("   正文：").append(content).append('\n')
+            }
+            if (sb.length > MAX_TOOL_OUTPUT) break
+        }
+        return sb.toString().take(MAX_TOOL_OUTPUT)
+    }
+
+    private fun runWebFetch(args: JSONObject, ctx: Context?): String {
+        val url = args.optString("url", "").trim()
+        if (url.isEmpty()) return "error: url 为空"
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return "error: url 必须以 http:// 或 https:// 开头"
+        }
+        val (apiKey, base) = deepSeekTarget(ctx)
+            ?: return "error: 读不到模块配置（模块进程可能没在运行）"
+        if (apiKey.isBlank()) return "error: 还没填 DeepSeek API Key（设置 → AI 接入 → API Key）"
+        val resp = postDeepSeek("$base/tools/fetch", apiKey, JSONObject().put("url", url))
+        if (!resp.ok) return "error: DeepSeek Fetch 失败（HTTP ${resp.code}）：${resp.error}"
+        val page = resp.json ?: return "error: 响应为空"
+        val title = page.optString("title").ifBlank { url }
+        val content = page.optString("content").ifBlank { "(页面没有可提取的正文)" }
+        return "# $title\n\n$content".take(MAX_TOOL_OUTPUT)
+    }
+
+    private class DeepSeekResp(val ok: Boolean, val code: Int, val json: JSONObject?, val error: String)
+
+    private fun postDeepSeek(url: String, apiKey: String, body: JSONObject): DeepSeekResp {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $apiKey")
+            }
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val msg = runCatching {
+                    JSONObject(text).optJSONObject("error")?.optString("message")
+                }.getOrNull().orEmpty().ifBlank { text.take(300) }
+                DeepSeekResp(false, code, null, msg)
+            } else {
+                DeepSeekResp(true, code, runCatching { JSONObject(text) }.getOrNull(), "")
+            }
+        } catch (e: Exception) {
+            DeepSeekResp(false, -1, null, e.message ?: e.javaClass.simpleName)
+        } finally {
+            conn?.disconnect()
+        }
     }
 
     // ---------------------------------------------------------------- shell 实现

@@ -1,10 +1,20 @@
-# XiaoAi Plug
+<p align="center">
+  <img src="docs/deepseek-logo.png" width="88" alt="DeepSeek">
+</p>
+
+# XiaoAi Plug · DeepSeek 集成版
 
 **自定义替换超级小爱模型，越权完成更多任务。**
 
+> 本项目 fork 自 [lm060719/XiaoAi-plug](https://github.com/lm060719/XiaoAi-plug)（原作者：lm060719），
+> 由 [DeepSeek-Dsh-Agent](https://github.com/DeepSeek-Dsh-Agent) 维护的 DeepSeek 集成版。
+> 本 fork 的改动：内置 DeepSeek 服务商（OpenAI 兼容，预置官方端点/模型，免去每次手填）、
+> 集成 DeepSeek Search/Fetch 工具（`web_search` / `web_fetch`）、服务商界面展示 DeepSeek LOGO。
+> 原项目与衍生项目均采用 GPLv3，署名见文末。
+
 一个 LSPosed / Xposed 模块，Hook `com.miui.voiceassist`。它做两件事：
 
-1. **换模型** — 把超级小爱背后的大模型替换成你自己配置的（OpenAI 兼容 / Anthropic / xAI / 硅基流动，任意 API Key）。你问、你的模型答，答案原路送回小爱的语音和卡片里。
+1. **换模型** — 把超级小爱背后的大模型替换成你自己配置的（OpenAI 兼容 / **DeepSeek** / Anthropic / xAI / 硅基流动，任意 API Key）。你问、你的模型答，答案原路送回小爱的语音和卡片里。
 2. **提权** — 原生小爱受限于系统权限，很多事只能「跳到设置页让你自己看」「回一句不支持」。模块把 root 和无障碍能力打包成工具交给模型，它能真正读设备、改设置、启动应用、代你发微信消息。
 
 换模型解决「答得好不好」，提权解决「能不能真的做到」。两件事合起来，超级小爱从一个受限的语音壳子变成一个能落地执行的设备助手。
@@ -28,13 +38,19 @@
 
 **等待显示也用小爱的原生组件。** 等待模型回答时复用 `CommonLoadingCard` 使用的 `LoadingTextView` 思考动画和文字；正文开始输出或本轮结束后关闭，无正文的工具轮恢复等待状态。卡片退出时释放动画资源。
 
-**服务商可扩展。** 只有报文协议（OpenAI / Anthropic 两种）需要写代码，新增一家 OpenAI 兼容服务商只是在 `AiProvider` 里加一行默认地址和默认模型，界面和客户端都不用动。
+**服务商可扩展。** 只有报文协议（OpenAI / Anthropic 两种）需要写代码，新增一家 OpenAI 兼容服务商只是在 `AiProvider` 里加一行默认地址和默认模型，界面和客户端都不用动。本 fork 已按这个方式内置了 DeepSeek：选中即用官方端点与模型，不用手填地址。
 
 **可显示思考过程。** 在「设置 → AI 接入 → 回复显示」开启「显示思考过程」（默认关闭），小爱卡片会在答案前显示可折叠的独立思考区域，默认展开，点击标题收起或展开。区域高度受限，长内容可在区域内上下滑动。思考文字比答案小 15%，使用跟随宿主主题的浅色；可查看实时内容，流式更新和工具轮切换保留展开状态；停留在底部时跟随新内容，向上查看时保留阅读位置。工具调用各轮的思考会保留。支持 OpenAI 兼容接口的 `reasoning_content` / `reasoning` 字段、正文开头的 `<think>` / `<thinking>` 块，以及 Anthropic 的 `thinking` 块。该开关只控制小爱卡片显示，不主动启用模型的思考模式；模型或接口未提供思考内容时仍只显示答案。语音播报、小爱原生历史和跨轮问答上下文只使用最终答案。
 
 **思考也会保存到模块「记录」。** 展开一条记录后，点击「思考过程 · 展开」即可查看，再次点击收起；默认折叠，支持选择文字，复制整条记录时也会包含思考，搜索可匹配思考内容。无论卡片显示开关是否开启，接口返回的各轮思考都会保存；请求失败时保留已收到的部分。没有思考内容的记录不显示该区域，升级前的记录继续保留，但无法补回过去未保存的思考。每条思考最多保存 64,000 个字符（含截断提示），超过时明确标注，不占用答案的存储额度。
 
 **接管时机可控。** AI 开启且配置可用时，在语音识别终态或文字问话入口接管回答；命中「白名单直通」正则的问话交给原版小爱。已接管轮次的原版动作也会被拦截，避免「打开网易云音乐」先被小爱执行、再被模型工具重复执行。查看类跳转仍有独立开关和放行词（如「打开」）；这些放行词只影响查看类判断，不会放行已由 AI 接管的原版动作。
+
+### DeepSeek 集成（本 fork 新增）
+
+- **内置服务商**：设置 → AI 接入 → 接入方式选 `DeepSeek`，端点/模型留空即可（默认 `https://api.deepseek.com/v1` + `deepseek-chat`），只填自己的 API Key。界面会显示 DeepSeek LOGO，不用再反复手填地址。
+- **搜索与抓取工具**：`web_search` / `web_fetch` 两个只读工具直接调用 DeepSeek 官方 [Search / Fetch API](https://api-docs.deepseek.com/zh-cn/guides/search/)，复用同一个 API Key。两者按成功请求计费（官方价 5 元 / 千次；失败、无结果不计）。
+- 当前服务商不是 DeepSeek 时，这两个工具会如实返回 401 / 失败信息，不会伪造结果；工具开关仍可在「工具」页单独关掉。
 
 ---
 
@@ -58,6 +74,8 @@
 | `get_setting` | 读系统设置项（System / Secure / Global） |
 | `read_file` | 读任意文本文件（root） |
 | `current_time` | 当前系统时间 |
+| `web_search` | DeepSeek 联网搜索（支持 site: / lang: / after: 等语法） |
+| `web_fetch` | 抓取单个网页正文为 Markdown |
 
 ### 能做
 
@@ -138,6 +156,12 @@ AGP 9.3 / Kotlin 2.4 / compileSdk 37。
 面向个人设备的功能增强，不涉及绕过任何鉴权或计费机制。开放 root 工具给大模型有其风险，请按需裁剪工具授权。
 
 任何因使用该模块导致超级小爱获取过高权限所造成的设备损坏作者概不负责。
+
+## 署名与致谢
+
+- 原项目：[lm060719/XiaoAi-plug](https://github.com/lm060719/XiaoAi-plug)，作者 lm060719。本 fork 保留原项目结构与全部 Hook 实现。
+- 本 fork 维护：[DeepSeek-Dsh-Agent](https://github.com/DeepSeek-Dsh-Agent)，由 dsh-agent 完成 DeepSeek 服务商内置、Search/Fetch 工具集成与 LOGO 展示。
+- DeepSeek 名称与 LOGO 归 [DeepSeek](https://www.deepseek.com/) 所有，此处仅用于标识所接入的官方服务；Search/Fetch API 文档见 [api-docs.deepseek.com](https://api-docs.deepseek.com/zh-cn/guides/search/)。
 
 ## 开源协议
 
