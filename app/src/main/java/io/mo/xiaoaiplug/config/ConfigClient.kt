@@ -122,7 +122,17 @@ const val DEFAULT_WEB_SEARCH_ALLOW_WORDS = "搜索,搜一下,搜下,搜搜,百�
 // 闹钟/提醒尤其不能接管——小爱自己会真的设一个,我们接管后模型八成也会用 run_shell 真设一个,
 // 变成两个闹钟;播放/上一首/下一首/暂停同理,本模块没有"点播指定歌曲"的工具,硬接管只会
 // 白调一次注定失败的模型。
-const val DEFAULT_SKIP_TAKEOVER_PATTERN = "闹钟|提醒|播放|上一首|下一首|暂停"
+//
+// 米家/智能家居设备指令同理,而且问题更严重:8.0.x 的小爱会把「开灯/关空调」这类话也交给
+// 云端大模型,我们接管后会把小爱真正的 MiotController 动作拦掉 —— 设备不执行,用户看到的
+// 就是「米家调用异常」。这类话交给原生 MiClaw/米家链路最稳。
+const val DEFAULT_SKIP_TAKEOVER_PATTERN =
+    "闹钟|提醒|播放|上一首|下一首|暂停" +
+        "|灯|空调|窗帘|插座|扫地|风扇|电视|冰箱|洗衣机|热水器|净化器|加湿器|晾衣架" +
+        "|浴霸|门锁|摄像头|音箱|米家|智能家居|设备控制"
+
+/** 上一版默认值。存档里如果还是它,按新默认迁移;用户手动改过的保持不动。 */
+const val LEGACY_SKIP_TAKEOVER_PATTERN = "闹钟|提醒|播放|上一首|下一首|暂停"
 
 object ConfigClient {
 
@@ -177,7 +187,8 @@ object ConfigClient {
             skipTakeoverEnabled = skipTakeoverRaw.isNullOrEmpty() || skipTakeoverRaw == "true",
             // 「从没配置过给默认值、用户手动清空就是空」的区分已经在 ConfigProvider 里做完了
             // (SharedPreferences.getString 的 defValue 只在 key 不存在时生效),这里不用再猜。
-            skipTakeoverPattern = result?.getString(ConfigKeys.SKIP_TAKEOVER_PATTERN).orEmpty(),
+            skipTakeoverPattern = result?.getString(ConfigKeys.SKIP_TAKEOVER_PATTERN).orEmpty()
+                .let { if (it == LEGACY_SKIP_TAKEOVER_PATTERN) DEFAULT_SKIP_TAKEOVER_PATTERN else it },
             // 注意这里不是「空即开」—— 默认关，只有显式存过 "true" 才算开。
             autoFixAccessibility = autoFixRaw == "true",
             mcpServersRaw = result?.getString(ConfigKeys.MCP_SERVERS).orEmpty(),

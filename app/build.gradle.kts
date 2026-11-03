@@ -15,8 +15,8 @@ android {
         // miuix-blur 要求 minSdk 33（模糊靠 RenderEffect，低版本拿不到「液态玻璃」质感）。
         minSdk = 33
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.3.0"
+        versionCode = 14
+        versionName = "1.4.0"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a"))
@@ -42,6 +42,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // fork 的 CI 用固定 debug keystore(见 build-release.yml)，保证每次构建签名一致，
+            // 用户可以直接覆盖安装；本地没设环境变量时仍走默认 debug keystore。
+            ciSigning?.let { signingConfig = it }
+        }
         release {
             ciSigning?.let { signingConfig = it }
             // Compose + miuix 全家桶不裁剪的话 dex 有 36MB,包体 23.8MB。

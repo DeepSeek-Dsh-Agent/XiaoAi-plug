@@ -699,7 +699,13 @@ class HookEntry : IXposedHookLoadPackage {
                             @Suppress("UNCHECKED_CAST")
                             val specs = (action.javaClass.getMethod("getAction").invoke(action)
                                 as? List<String>).orEmpty()
-                            if (!shouldBlockAgentAction(specs)) return
+                            // 8.0.x 的云端模型也会生成米家/设备控制类动作；这类动作不是小爱自己的兜底，
+                            // 拦掉就等于「米家调用异常」。读 actionType 判断，读不到不影响原逻辑。
+                            val actionType = runCatching {
+                                val opt = action.javaClass.getMethod("getActionType").invoke(action)
+                                (opt as? java.util.Optional<*>)?.orElse(null)?.toString().orEmpty()
+                            }.getOrDefault("")
+                            if (!shouldBlockAgentAction(specs, actionType)) return
                             Log.i(TAG, "block agent action: query=\"$lastQueryText\" specs=$specs")
                             param.result = if (m.returnType == java.lang.Boolean.TYPE) true else null
                             onViewJumpBlocked(lastDialogId)
@@ -727,30 +733,41 @@ class HookEntry : IXposedHookLoadPackage {
      * 只拦当前被接管、且问话对得上的那一轮:MiClaw 的定时 / 后台任务和当前问话无关,不能误伤。
      */
     private fun hookMiClawTools(cl: ClassLoader) {
-        val executor = try {
-            cl.loadClass("com.aios.osbot.tools.ToolExecutor")
-        } catch (t: Throwable) {
-            Log.i(TAG, "MiClaw ToolExecutor not found: $t")
-            return
-        }
+        // 8.0.x 起 MiClaw 工具框架整体重构：com.aios.osbot.tools → com.aios.tools.core，
+        // 执行器类名与 Failure 构造器都变了。旧类名保留 fallback，兼容 7.x。
+        val executor = listOf(
+            "com.aios.tools.core.ToolExecutor",
+            "com.aios.osbot.tools.ToolExecutor"
+        ).firstNotNullOfOrNull { name -> runCatching { cl.loadClass(name) }.getOrNull() }
+            ?: run { Log.i(TAG, "MiClaw ToolExecutor not found (new/old)"); return }
         val execute = executor.declaredMethods.firstOrNull {
             it.name == "execute" && it.parameterTypes.size == 4 && it.parameterTypes[0] == String::class.java
         } ?: run { Log.i(TAG, "MiClaw ToolExecutor.execute not found"); return }
-        val failure = try {
-            val type = cl.loadClass("com.aios.osbot.tools.FailureType")
-            val ctor = cl.loadClass("com.aios.osbot.tools.ToolResult\$Failure").getConstructor(
-                String::class.java, java.lang.Boolean.TYPE, type, Integer::class.java,
-                java.lang.Boolean.TYPE, String::class.java, String::class.java)
-            val permanent = type.enumConstants.first { (it as Enum<*>).name == "PERMANENT" }
-            ctor to permanent
-        } catch (t: Throwable) {
-            Log.i(TAG, "MiClaw ToolResult.Failure unavailable: $t")
-            return
+
+        // 失败结果：8.0.x 是 ToolResult.Failure(String, boolean)；7.x 是老 7 参构造。
+        var failureCtor: java.lang.reflect.Constructor<*>? = null
+        var failureType: Any? = null
+        runCatching {
+            failureCtor = cl.loadClass("com.aios.tools.core.ToolResult\$Failure")
+                .getConstructor(String::class.java, java.lang.Boolean.TYPE)
         }
+        if (failureCtor == null) {
+            runCatching {
+                val type = cl.loadClass("com.aios.osbot.tools.FailureType")
+                failureCtor = cl.loadClass("com.aios.osbot.tools.ToolResult\$Failure").getConstructor(
+                    String::class.java, java.lang.Boolean.TYPE, type, Integer::class.java,
+                    java.lang.Boolean.TYPE, String::class.java, String::class.java)
+                failureType = type.enumConstants.first { (it as Enum<*>).name == "PERMANENT" }
+            }
+        }
+        val ctor = failureCtor
+            ?: run { Log.i(TAG, "MiClaw ToolResult.Failure unavailable"); return }
+
         XposedBridge.hookMethod(execute, object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam) {
                 try {
                     val tool = param.args[0] as? String ?: return
+                    // 8.0.x 的 ExecutionContext 没有 getOriginalUserQuery：取不到时按「当前接管轮次」算。
                     val query = runCatching {
                         param.args[2]?.javaClass?.getMethod("getOriginalUserQuery")?.invoke(param.args[2]) as? String
                     }.getOrNull()
@@ -759,15 +776,18 @@ class HookEntry : IXposedHookLoadPackage {
                         return
                     }
                     Log.i(TAG, "block MiClaw tool: $tool query=${query?.take(40)} args=${param.args[1].toString().take(200)}")
-                    val (ctor, permanent) = failure
-                    param.result = ctor.newInstance(
-                        "该操作已由其他助手接管处理，无需执行。", false, permanent, null, true, null, null)
+                    val denied = "该操作已由其他助手接管处理，无需执行。"
+                    param.result = if (failureType == null) {
+                        ctor.newInstance(denied, false)
+                    } else {
+                        ctor.newInstance(denied, false, failureType, null, true, null, null)
+                    }
                 } catch (t: Throwable) {
                     Log.i(TAG, "hookMiClawTools error: $t")
                 }
             }
         })
-        Log.i(TAG, "hooked MiClaw ToolExecutor.execute")
+        Log.i(TAG, "hooked MiClaw ToolExecutor.execute (${executor.name})")
     }
 
     // MiClaw 拿到的 originalUserQuery 可能带前后缀,双向包含都算对得上;取不到就按"当前接管轮次"算。
@@ -857,8 +877,14 @@ class HookEntry : IXposedHookLoadPackage {
 
     // 这条 Agent Action 该不该拦。判据同 shouldBlockJump:只看这一轮归不归我们,
     // 不看动作打向哪个包。specs 只用来确认"这确实是条动作指令"。
-    private fun shouldBlockAgentAction(specs: List<String>): Boolean {
+    // 例外:米家/设备控制类动作必须放行 —— 8.0.x 里云端模型同样会生成 MiotController 动作,
+    // 接管轮次里拦掉它,用户看到的就是「米家调用异常」(回答有了、设备没动)。
+    private fun shouldBlockAgentAction(specs: List<String>, actionType: String = ""): Boolean {
         if (specs.isEmpty()) return false
+        if (actionType.contains("MIOT", true) || actionType.contains("DEVICE", true)) {
+            Log.i(TAG, "pass MiotController agent action: type=$actionType specs=$specs")
+            return false
+        }
         return ownsCurrentTurn()
     }
 

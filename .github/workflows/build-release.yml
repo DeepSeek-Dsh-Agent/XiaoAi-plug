@@ -90,6 +90,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # 固定 debug keystore：每次构建签名一致，用户可以直接覆盖安装旧版 fork APK。
+      - name: Create stable fork keystore
+        run: |
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/fork.keystore" \
+            -alias forkdebug -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass androidfork -keypass androidfork \
+            -dname "CN=DeepSeek-Dsh-Agent, OU=fork, O=DSH, L=Beijing, C=CN"
+          echo "SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/fork.keystore" >> "$GITHUB_ENV"
+          echo "SIGNING_STORE_PASSWORD=androidfork" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_ALIAS=forkdebug" >> "$GITHUB_ENV"
+          echo "SIGNING_KEY_PASSWORD=androidfork" >> "$GITHUB_ENV"
+
       - name: Build debug APK
         run: |
           chmod +x gradlew

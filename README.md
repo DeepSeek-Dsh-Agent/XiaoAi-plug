@@ -53,6 +53,14 @@
 - **搜索与抓取工具**：`web_search` / `web_fetch` 两个只读工具直接调用 DeepSeek 官方 [Search / Fetch API](https://api-docs.deepseek.com/zh-cn/guides/search/)，复用同一个 API Key。两者按成功请求计费（官方价 5 元 / 千次；失败、无结果不计）。
 - 当前服务商不是 DeepSeek 时，这两个工具会如实返回 401 / 失败信息，不会伪造结果；工具开关仍可在「工具」页单独关掉。
 
+### 8.0.30 适配（本 fork）
+
+- **MiClaw 工具框架重构**：8.0.x 把小爱 Agent 工具从 `com.aios.osbot.tools` 迁到 `com.aios.tools.core`，执行器类名、`ToolResult.Failure` 构造器都变了，`ExecutionContext` 也不再提供 `getOriginalUserQuery`。本 fork 的 MiClaw 拦截已按新结构适配（7.x 类名保留 fallback）。
+- **米家调用修复**：8.0.x 会把「开灯 / 关空调」这类设备指令也交给云端模型；接管轮次里若把 `Agent.Action`（MiotController）一并拦掉，设备就不会执行——用户看到的就是「米家调用异常」。现在：
+  - `shouldBlockAgentAction` 对 `actionType` 含 `MIOT` / `DEVICE` 的动作直接放行；
+  - 默认白名单直通正则新增设备关键词（灯 / 空调 / 窗帘 / 米家 / 智能家居…），这类话完全不接管，交给原生 MiClaw/米家链路。
+- 已安装 fork 旧版的用户需要卸载一次（旧构建的 debug 签名随 runner 变化）；从 1.4.0 起 CI 使用固定签名，后续可直接覆盖安装。
+
 ---
 
 ## 二、提权
@@ -136,7 +144,7 @@
 ## 环境要求
 
 - Android 13+
-- HyperOS，超级小爱 `com.miui.voiceassist`(7.513.23.0010)
+- HyperOS，超级小爱 `com.miui.voiceassist`（8.0.30.4121 已适配；7.513.x 仍兼容）
 - LSPosed（Xposed API 93+）
 - Root
 
