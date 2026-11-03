@@ -2377,7 +2377,7 @@ object Tools {
     // ---------------------------------------------------------------- DeepSeek 搜索 / 网页抓取
 
     /**
-     * DeepSeek 官方 Search / Fetch 工具接口（https://api.deepseek.com/v1/tools/*）。
+     * DeepSeek 官方 Search / Fetch 工具接口（base + /v1/tools/search 与 /v1/tools/fetch）。
      *
      * 复用「AI 接入」里填的 API Key —— 前提是那是 DeepSeek 的 Key。换成别家服务商时
      * 这两个工具会拿到 401/404，如实返回给模型，不假装成功。
