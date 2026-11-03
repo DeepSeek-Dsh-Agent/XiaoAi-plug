@@ -50,7 +50,10 @@ data class AiConfig(
     // 长回答自动播报只念开头一两句，提示去看屏幕；卡片和喇叭重播仍是全文。默认关闭。
     val speakBrief: Boolean = false,
     // 边生成边播报:答案还在生成时整句一出来就开始念(实验性,默认关)。条件不满足时退回整段播报。
-    val streamSpeech: Boolean = false
+    val streamSpeech: Boolean = false,
+    // DeepSeek 回答类型（思考模式）：""=默认（模型决定）/ fast=不思考 / on=思考 / max=深度思考。
+    // 仅对 DeepSeek 服务商生效；其他服务商不认识 thinking 字段，见 AiClient.openAiRequest。
+    val thinkingMode: String = ""
 ) {
     /** 解析后的 MCP 服务配置列表 */
     val mcpServers: List<McpServerConfig> get() = McpServerConfig.parseList(mcpServersRaw)
@@ -77,6 +80,9 @@ data class AiConfig(
      */
     val effectiveSystemPrompt: String get() = systemPrompt.ifBlank { DEFAULT_SYSTEM_PROMPT }
 
+    /** 实际生效的回答类型；旧存档/空值 = 模型默认。 */
+    val effectiveThinking: ThinkingMode get() = ThinkingMode.fromKey(thinkingMode)
+
     /**
      * 配置是否齐全到能真发一次请求。
      *
@@ -84,6 +90,26 @@ data class AiConfig(
      * 各处"是否已配置"的判断都该问这个,而不是再去看 endpoint 空不空。
      */
     val isUsable: Boolean get() = apiKey.isNotBlank()
+}
+
+/**
+ * DeepSeek 回答类型（思考模式）。
+ *
+ * 映射到官方参数：fast = `{"thinking":{"type":"disabled"}}`；
+ * on = `{"thinking":{"type":"enabled"}}`；max = enabled + `reasoning_effort:"max"`。
+ * 默认（空 key）不传任何参数，由模型决定（官方当前默认开思考、强度 high）。
+ * 该设置只影响 DeepSeek 服务商；其他服务商在 AiClient 里被跳过。
+ */
+enum class ThinkingMode(val key: String, val label: String) {
+    DEFAULT("", "默认（模型决定）"),
+    FAST("fast", "快速（不思考）"),
+    ON("on", "思考"),
+    MAX("max", "深度思考");
+
+    companion object {
+        fun fromKey(key: String?): ThinkingMode =
+            entries.firstOrNull { it.key == key?.trim() } ?: DEFAULT
+    }
 }
 
 // 放行词默认值:只有说"打开/开启/进入/去..."才跳转
@@ -157,7 +183,8 @@ object ConfigClient {
             mcpServersRaw = result?.getString(ConfigKeys.MCP_SERVERS).orEmpty(),
             showThinking = result?.getString(ConfigKeys.SHOW_THINKING) == "true",
             speakBrief = result?.getString(ConfigKeys.SPEAK_BRIEF) == "true",
-            streamSpeech = result?.getString(ConfigKeys.STREAM_SPEECH) == "true"
+            streamSpeech = result?.getString(ConfigKeys.STREAM_SPEECH) == "true",
+            thinkingMode = result?.getString(ConfigKeys.THINKING_MODE).orEmpty()
         )
     }
 
@@ -186,6 +213,7 @@ object ConfigClient {
             putString(ConfigKeys.SKIP_TAKEOVER_PATTERN, config.skipTakeoverPattern)
             putString(ConfigKeys.AUTO_FIX_ACCESSIBILITY, config.autoFixAccessibility.toString())
             putString(ConfigKeys.MCP_SERVERS, config.mcpServersRaw)
+            putString(ConfigKeys.THINKING_MODE, config.thinkingMode)
         }
         return try {
             val out = context.contentResolver.call(uri, ConfigProvider.METHOD_SET, null, extras)

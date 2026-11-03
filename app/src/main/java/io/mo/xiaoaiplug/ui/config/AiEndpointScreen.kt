@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.mo.xiaoaiplug.R
 import io.mo.xiaoaiplug.config.AiProvider
 import io.mo.xiaoaiplug.config.DEFAULT_SYSTEM_PROMPT
+import io.mo.xiaoaiplug.config.ThinkingMode
 import io.mo.xiaoaiplug.ui.ConfigViewModel
 import io.mo.xiaoaiplug.ui.ModelListState
 import io.mo.xiaoaiplug.ui.TestState
@@ -93,6 +94,30 @@ fun AiEndpointScreen(vm: ConfigViewModel, bottomInset: Dp, onBack: () -> Unit) {
                         onSelectedIndexChange = { i ->
                             vm.update { it.copy(provider = providers[i].key) }
                         }
+                    )
+                }
+            }
+        }
+        // 回答类型只对 DeepSeek 有效：别的服务商不认识 thinking / reasoning_effort，
+        // 显示出来只会误导。答案仍然回到小爱原生的聊天卡片，不另起页面。
+        if (provider == AiProvider.DEEPSEEK) {
+            item { SmallTitle("回答类型") }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    WindowDropdownPreference(
+                        title = "回答方式",
+                        items = ThinkingMode.entries.map { it.label },
+                        selectedIndex = ThinkingMode.entries.indexOf(config.effectiveThinking),
+                        onSelectedIndexChange = { i ->
+                            vm.update { it.copy(thinkingMode = ThinkingMode.entries[i].key) }
+                        }
+                    )
+                    Text(
+                        text = "快速：关闭思考、直接回答，语音场景更跟手；思考 / 深度：先想再答，更准但慢一些。" +
+                            "只对 DeepSeek 生效，答案照旧回到小爱原来的聊天卡片里。",
+                        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                        color = MiuixTheme.colorScheme.onBackgroundVariant,
+                        modifier = Modifier.padding(horizontal = CardHorizontalPadding, vertical = 8.dp)
                     )
                 }
             }

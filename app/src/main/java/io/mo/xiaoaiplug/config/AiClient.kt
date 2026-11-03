@@ -594,6 +594,18 @@ object AiClient {
             body.put("tools", Tools.toOpenAiSchema(specs))
             body.put("tool_choice", if (noToolCalls) "none" else "auto")
         }
+        // DeepSeek 回答类型：只有 DeepSeek 认 thinking / reasoning_effort，
+        // 别的 OpenAI 兼容服务商不传，免得把不认识的字段塞给它们。
+        // 默认档不改参数，由模型决定（官方当前默认开思考、强度 high）。
+        if (config.aiProvider == AiProvider.DEEPSEEK) {
+            when (config.effectiveThinking) {
+                ThinkingMode.FAST -> body.put("thinking", JSONObject().put("type", "disabled"))
+                ThinkingMode.ON -> body.put("thinking", JSONObject().put("type", "enabled"))
+                ThinkingMode.MAX -> body.put("thinking", JSONObject().put("type", "enabled"))
+                    .put("reasoning_effort", "max")
+                ThinkingMode.DEFAULT -> Unit
+            }
+        }
         val base = config.effectiveEndpoint.trimEnd('/')
         val url = URL(if (base.endsWith("/chat/completions")) base else "$base/chat/completions")
         val headers = HashMap<String, String>()

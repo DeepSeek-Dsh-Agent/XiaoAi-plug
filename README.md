@@ -49,6 +49,7 @@
 ### DeepSeek 集成（本 fork 新增）
 
 - **内置服务商**：设置 → AI 接入 → 接入方式选 `DeepSeek`，端点/模型留空即可（默认 `https://api.deepseek.com/v1` + `deepseek-flash`；要更强可手填 `deepseek-v4-pro`），只填自己的 API Key。界面会显示 DeepSeek LOGO，不用再反复手填地址。
+- **回答类型（思考模式）**：同一页可选 `默认（模型决定）` / `快速（不思考）` / `思考` / `深度思考`，分别对应官方 `thinking:{"type":"disabled|enabled"}` 与 `reasoning_effort:"max"`。快速档适合语音（更跟手），思考档更准但慢一些。**答案仍然回到小爱原生的聊天卡片/语音，不另起聊天页面。**
 - **搜索与抓取工具**：`web_search` / `web_fetch` 两个只读工具直接调用 DeepSeek 官方 [Search / Fetch API](https://api-docs.deepseek.com/zh-cn/guides/search/)，复用同一个 API Key。两者按成功请求计费（官方价 5 元 / 千次；失败、无结果不计）。
 - 当前服务商不是 DeepSeek 时，这两个工具会如实返回 401 / 失败信息，不会伪造结果；工具开关仍可在「工具」页单独关掉。
 

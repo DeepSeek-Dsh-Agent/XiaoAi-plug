@@ -55,6 +55,9 @@ object ConfigKeys {
     // MCP 远程服务列表 JSON 字符串
     const val MCP_SERVERS = "mcp_servers"
 
+    // DeepSeek 回答类型（思考模式）：""=默认（模型决定）/ fast=不思考 / on=思考 / max=深度思考
+    const val THINKING_MODE = "thinking_mode"
+
     val ALL = listOf(
         PROVIDER, ENDPOINT, API_KEY, MODEL, SYSTEM_PROMPT, ENABLED,
         BLOCK_VIEW_JUMP, JUMP_ALLOW_WORDS,
@@ -63,7 +66,7 @@ object ConfigKeys {
         ENABLED_TOOLS, SHELL_POLICY, USE_NATIVE_TOOLS, CONTEXT_ENABLED,
         SKIP_TAKEOVER_ENABLED, SKIP_TAKEOVER_PATTERN,
         AUTO_FIX_ACCESSIBILITY,
-        MCP_SERVERS
+        MCP_SERVERS, THINKING_MODE
     )
 }
 
